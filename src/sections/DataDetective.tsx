@@ -1,7 +1,42 @@
-import React, { useRef, useState, useEffect } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { motion, useInView } from 'framer-motion';
 import { dataDetective } from '../data/content';
 import { useReducedMotion } from '../hooks/useReducedMotion';
+
+// Highlight rule lives here so this file is self-contained.
+// The highlight is switched by ONE class on the grid container ("revealed"),
+// so React never has to re-render the 918 dots when you click the button.
+// Created once at module level (same element every render).
+const dotStyles = (
+  <style>{`
+    .dot-grid.revealed .dot.anomaly {
+      background: var(--accent);
+      transform: scale(1.3);
+      transition-delay: var(--d, 0ms);
+    }
+  `}</style>
+);
+
+// Rendered once. Because it doesn't depend on `revealed`, memo() skips it
+// completely when the button is clicked.
+const Dots = memo(function Dots({ flags, instant }: { flags: boolean[]; instant: boolean }) {
+  return (
+    <>
+      {flags.map((isAnomaly, i) => (
+        <div
+          key={i}
+          className={isAnomaly ? 'dot anomaly' : 'dot'}
+          style={
+            isAnomaly && !instant
+              ? ({ '--d': `${(i % 50) * 12}ms` } as CSSProperties)
+              : undefined
+          }
+          title={isAnomaly ? 'Record with Chol = 0 mg/dL' : 'Standard record'}
+        />
+      ))}
+    </>
+  );
+});
 
 export default function DataDetective() {
   const ref = useRef<HTMLElement>(null);
@@ -25,8 +60,8 @@ export default function DataDetective() {
   const affected = dataDetective.affectedDots;
 
   // Precompute indices for deterministic layout
-  const dotIndices = React.useMemo(() => {
-    const isAffected = new Array(total).fill(false);
+  const dotIndices = useMemo(() => {
+    const isAffected: boolean[] = new Array(total).fill(false);
     // Evenly disperse 172 true values across 918
     const step = total / affected;
     for (let i = 0; i < affected; i++) {
@@ -38,6 +73,7 @@ export default function DataDetective() {
 
   return (
     <section id="data-detective" className="section" ref={ref} style={{ background: 'var(--bg-secondary)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
+      {dotStyles}
       <div className="container">
         <div>
           <div className="cell-header">In [5]: # The Data Detective Moment</div>
@@ -67,9 +103,9 @@ export default function DataDetective() {
             </button>
           </div>
 
-          {/* 918 Dot Matrix Canvas/Grid */}
+          {/* 918 Dot Matrix Grid */}
           <div
-            className="dot-grid"
+            className={revealed ? 'dot-grid revealed' : 'dot-grid'}
             style={{
               maxHeight: 260,
               overflow: 'hidden',
@@ -80,16 +116,7 @@ export default function DataDetective() {
               marginBottom: '2rem',
             }}
           >
-            {dotIndices.map((isAnomaly, i) => (
-              <div
-                key={i}
-                className={`dot ${revealed && isAnomaly ? 'highlighted' : ''}`}
-                style={{
-                  transitionDelay: revealed && isAnomaly && !reducedMotion ? `${(i % 50) * 12}ms` : '0ms',
-                }}
-                title={isAnomaly ? 'Record with Chol = 0 mg/dL' : 'Standard record'}
-              />
-            ))}
+            <Dots flags={dotIndices} instant={reducedMotion} />
           </div>
 
           {/* Finding Analysis Panel */}

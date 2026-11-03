@@ -1,43 +1,38 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function GrainOverlay() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [tile, setTile] = useState('');
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const size = 128;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let animId: number;
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-    resize();
-    window.addEventListener('resize', resize);
-
-    const renderGrain = () => {
-      const { width, height } = canvas;
-      const imageData = ctx.createImageData(width, height);
-      const data = imageData.data;
-      for (let i = 0; i < data.length; i += 4) {
-        const v = Math.random() * 255;
-        data[i] = v;
-        data[i + 1] = v;
-        data[i + 2] = v;
-        data[i + 3] = 20;
-      }
-      ctx.putImageData(imageData, 0, 0);
-      animId = requestAnimationFrame(renderGrain);
-    };
-    renderGrain();
-
-    return () => {
-      cancelAnimationFrame(animId);
-      window.removeEventListener('resize', resize);
-    };
+    const imageData = ctx.createImageData(size, size);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const v = Math.random() * 255;
+      data[i] = v;
+      data[i + 1] = v;
+      data[i + 2] = v;
+      data[i + 3] = 20;
+    }
+    ctx.putImageData(imageData, 0, 0);
+    setTile(canvas.toDataURL('image/png'));
   }, []);
 
-  return <canvas ref={canvasRef} className="grain-overlay" aria-hidden="true" />;
+  return (
+    <div
+      className="grain-overlay"
+      aria-hidden="true"
+      style={{
+        backgroundImage: tile ? `url(${tile})` : undefined,
+        backgroundRepeat: 'repeat',
+        backgroundSize: '128px 128px',
+      }}
+    />
+  );
 }

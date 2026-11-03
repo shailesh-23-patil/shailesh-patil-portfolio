@@ -1,81 +1,95 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
+
+const HOVER_SELECTOR =
+  'a, button, input, textarea, select, summary, [role="button"], [data-cursor], .btn, .chip, .card';
 
 export default function CustomCursor() {
   const dotRef = useRef<HTMLDivElement>(null);
   const ringRef = useRef<HTMLDivElement>(null);
-  const [isTouch, setIsTouch] = useState(false);
 
   useEffect(() => {
-    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
-      setIsTouch(true);
-      return;
-    }
+    // No custom cursor on touch devices
+    if (window.matchMedia('(pointer: coarse)').matches) return;
 
-    let mouseX = 0, mouseY = 0;
-    let ringX = 0, ringY = 0;
+    const dot = dotRef.current;
+    const ring = ringRef.current;
+    if (!dot || !ring) return;
 
-    const move = (e: MouseEvent) => {
+    // Hidden until the first mouse move, so it doesn't flash at (0, 0)
+    dot.style.visibility = 'hidden';
+    ring.style.visibility = 'hidden';
+
+    let mouseX = 0;
+    let mouseY = 0;
+    let ringX = 0;
+    let ringY = 0;
+    let raf = 0;
+    let running = false;
+    let shown = false;
+
+    const tick = () => {
+      // Ring trails the dot smoothly
+      ringX += (mouseX - ringX) * 0.18;
+      ringY += (mouseY - ringY) * 0.18;
+      ring.style.transform = `translate3d(${ringX}px, ${ringY}px, 0)`;
+
+      // Stop the loop once the ring has caught up (saves CPU when idle)
+      if (Math.abs(mouseX - ringX) < 0.1 && Math.abs(mouseY - ringY) < 0.1) {
+        running = false;
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+
+    const onMove = (e: PointerEvent) => {
       mouseX = e.clientX;
       mouseY = e.clientY;
-      if (dotRef.current) {
-        dotRef.current.style.left = `${mouseX}px`;
-        dotRef.current.style.top = `${mouseY}px`;
+      dot.style.transform = `translate3d(${mouseX}px, ${mouseY}px, 0)`;
+
+      if (!shown) {
+        shown = true;
+        ringX = mouseX;
+        ringY = mouseY;
+        dot.style.visibility = 'visible';
+        ring.style.visibility = 'visible';
+      }
+
+      if (!running) {
+        running = true;
+        raf = requestAnimationFrame(tick);
       }
     };
 
-    const updateRing = () => {
-      ringX += (mouseX - ringX) * 0.15;
-      ringY += (mouseY - ringY) * 0.15;
-      if (ringRef.current) {
-        ringRef.current.style.left = `${ringX}px`;
-        ringRef.current.style.top = `${ringY}px`;
-      }
-      requestAnimationFrame(updateRing);
+    // Event delegation: one listener instead of one per element
+    const onOver = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      const isHoverable = !!target?.closest?.(HOVER_SELECTOR);
+      document.body.classList.toggle('cursor-hover', isHoverable);
     };
 
-    const handleOver = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.closest('a, button, [role="button"], .card, input, textarea, .chip')) {
-        dotRef.current?.classList.add('cursor-dot-hover');
-        ringRef.current?.classList.add('cursor-ring-hover');
-      }
+    const onLeaveWindow = () => {
+      dot.style.visibility = 'hidden';
+      ring.style.visibility = 'hidden';
+      shown = false;
     };
 
-    const handleOut = () => {
-      dotRef.current?.classList.remove('cursor-dot-hover');
-      ringRef.current?.classList.remove('cursor-ring-hover');
-    };
-
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseover', handleOver);
-    window.addEventListener('mouseout', handleOut);
-    requestAnimationFrame(updateRing);
-
-    // Hide default cursor
-    document.body.style.cursor = 'none';
-    const style = document.createElement('style');
-    style.textContent = 'a,button,[role="button"],input,textarea,.chip,.card{cursor:none!important}';
-    document.head.appendChild(style);
+    window.addEventListener('pointermove', onMove, { passive: true });
+    document.addEventListener('pointerover', onOver, { passive: true });
+    document.documentElement.addEventListener('mouseleave', onLeaveWindow);
 
     return () => {
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseover', handleOver);
-      window.removeEventListener('mouseout', handleOut);
-      document.body.style.cursor = '';
-      style.remove();
+      cancelAnimationFrame(raf);
+      window.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerover', onOver);
+      document.documentElement.removeEventListener('mouseleave', onLeaveWindow);
+      document.body.classList.remove('cursor-hover');
     };
   }, []);
 
-  if (isTouch) return null;
-
   return (
     <>
-      <div ref={dotRef} className="cursor-dot" />
-      <div ref={ringRef} className="cursor-ring" />
-      <style>{`
-        .cursor-dot-hover { width: 10px !important; height: 10px !important; }
-        .cursor-ring-hover { width: 50px !important; height: 50px !important; opacity: 0.3 !important; }
-      `}</style>
+      <div ref={ringRef} className="cursor-ring" aria-hidden="true" />
+      <div ref={dotRef} className="cursor-dot" aria-hidden="true" />
     </>
   );
 }

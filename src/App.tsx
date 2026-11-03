@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { memo, useEffect, useState, useCallback, useRef } from 'react';
 import Lenis from 'lenis';
 import { useTheme } from './hooks/useTheme';
 import { useReducedMotion } from './hooks/useReducedMotion';
@@ -19,6 +19,20 @@ import Journey from './sections/Journey';
 import Contact from './sections/Contact';
 import Footer from './components/Footer';
 
+// Memoized so that opening the command palette, showing a toast, or finishing
+// the loading screen does NOT re-render every section of the page.
+const HeroSection = memo(Hero);
+const AboutSection = memo(About);
+const SkillsSection = memo(Skills);
+const FeaturedProjectsSection = memo(FeaturedProjects);
+const AllProjectsSection = memo(AllProjects);
+const DataDetectiveSection = memo(DataDetective);
+const JourneySection = memo(Journey);
+const ContactSection = memo(Contact);
+const GrainOverlayMemo = memo(GrainOverlay);
+const CustomCursorMemo = memo(CustomCursor);
+const ScrollProgressMemo = memo(ScrollProgress);
+
 function App() {
   const { theme, palette, toggleTheme, setPalette } = useTheme();
   const reducedMotion = useReducedMotion();
@@ -26,8 +40,12 @@ function App() {
   const [cmdOpen, setCmdOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const lenisRef = useRef<Lenis | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Initialize Lenis smooth scrolling
+  // FIX: the old version never cancelled its requestAnimationFrame loop, so after
+  // cleanup (or React StrictMode's double-run in dev) extra loops kept running
+  // forever and fought each other. Now the loop is cancelled properly.
   useEffect(() => {
     if (reducedMotion) return;
     const lenis = new Lenis({
@@ -37,14 +55,27 @@ function App() {
     });
     lenisRef.current = lenis;
 
-    function raf(time: number) {
+    let rafId = 0;
+    const raf = (time: number) => {
       lenis.raf(time);
-      requestAnimationFrame(raf);
-    }
-    requestAnimationFrame(raf);
+      rafId = requestAnimationFrame(raf);
+    };
+    rafId = requestAnimationFrame(raf);
 
-    return () => lenis.destroy();
+    return () => {
+      cancelAnimationFrame(rafId);
+      lenis.destroy();
+      if (lenisRef.current === lenis) lenisRef.current = null;
+    };
   }, [reducedMotion]);
+
+  // Pause page scrolling while the command palette is open
+  useEffect(() => {
+    const lenis = lenisRef.current;
+    if (!lenis) return;
+    if (cmdOpen) lenis.stop();
+    else lenis.start();
+  }, [cmdOpen]);
 
   // Scroll to section helper
   const scrollTo = useCallback((id: string) => {
@@ -71,9 +102,15 @@ function App() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // FIX: clear the previous timer so a new toast isn't hidden early by an old timeout
   const showToast = useCallback((msg: string) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 2500);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2500);
+  }, []);
+
+  useEffect(() => () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
   }, []);
 
   // Loading screen
@@ -85,9 +122,9 @@ function App() {
   return (
     <>
       {loading && <LoadingIntro />}
-      <CustomCursor />
-      <ScrollProgress />
-      <GrainOverlay />
+      <CustomCursorMemo />
+      <ScrollProgressMemo />
+      <GrainOverlayMemo />
       <Navbar
         theme={theme}
         palette={palette}
@@ -97,14 +134,14 @@ function App() {
         openCmd={() => setCmdOpen(true)}
       />
       <main>
-        <Hero scrollTo={scrollTo} />
-        <About />
-        <Skills />
-        <FeaturedProjects showToast={showToast} />
-        <AllProjects showToast={showToast} />
-        <DataDetective />
-        <Journey />
-        <Contact showToast={showToast} />
+        <HeroSection scrollTo={scrollTo} />
+        <AboutSection />
+        <SkillsSection />
+        <FeaturedProjectsSection showToast={showToast} />
+        <AllProjectsSection showToast={showToast} />
+        <DataDetectiveSection />
+        <JourneySection />
+        <ContactSection showToast={showToast} />
       </main>
       <Footer scrollTo={scrollTo} theme={theme} palette={palette} toggleTheme={toggleTheme} setPalette={setPalette} />
       {cmdOpen && (
